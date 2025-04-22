@@ -1,0 +1,457 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[3]:
+
+
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score,
+    f1_score, roc_auc_score, roc_curve
+)
+
+get_ipython().run_line_magic('matplotlib', 'inline')
+
+
+# In[4]:
+
+
+# Load the dataset
+df = pd.read_csv("Epileptic_featured _data.csv")
+
+# Drop ID column and convert labels
+df.drop(columns=['ID'], inplace=True)
+df['stat'] = df['stat'].replace({2: 0})  # 0 = Non-epileptic, 1 = Epileptic
+
+df.head()
+
+
+# In[5]:
+
+
+# Calculate correlation with target
+correlations = df.corr()['stat'].drop('stat').sort_values(ascending=False)
+
+# Select top 5 correlated features
+top5_features = correlations.head(5).index.tolist()
+print("Top 5 features based on correlation:", top5_features)
+
+
+# In[6]:
+
+
+# Preliminary Data Analysis and Visualization
+
+# Basic info
+print("Dataset shape:", df.shape)
+print("\nColumn names:", df.columns.tolist())
+
+# Class distribution
+plt.figure(figsize=(5, 4))
+sns.countplot(x='stat', data=df, palette='Set2')
+plt.title("Class Distribution (0 = Non-Epileptic, 1 = Epileptic)")
+plt.xlabel("Stat")
+plt.ylabel("Count")
+plt.show()
+
+# Summary statistics
+display(df.describe().T)
+
+# Correlation heatmap (first 20 features only to keep it readable)
+plt.figure(figsize=(12, 10))
+sns.heatmap(df.iloc[:, :20].corr(), cmap='coolwarm', center=0, annot=False)
+plt.title("Correlation Heatmap (Partial View)")
+plt.show()
+
+# Top 5 correlated features
+top5_corr = df[top5_features + ['stat']]
+sns.pairplot(top5_corr, hue='stat', corner=True, palette='husl')
+plt.suptitle("Pairplot of Top 5 Correlated Features", y=1.02)
+plt.show()
+
+
+# In[7]:
+
+
+# Use only top 5 features for X
+X = df[top5_features]
+y = df['stat']
+
+# Train-test split (stratified to preserve class ratio)
+X_train_raw, X_test_raw, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# Scale after splitting to avoid leakage
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train_raw)
+X_test = scaler.transform(X_test_raw)
+
+
+# In[8]:
+
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+
+# Initialize models
+models_top5 = {
+    "Random Forest": RandomForestClassifier(random_state=42),
+    "Logistic Regression": LogisticRegression(),
+    "SVM": SVC(probability=True, random_state=42),
+    "KNN": KNeighborsClassifier(n_neighbors=5)
+}
+
+# Train all models
+for name, model in models_top5.items():
+    model.fit(X_train, y_train)
+
+
+
+# In[9]:
+
+
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+)
+
+# Evaluate with 4-decimal precision
+for name, model in models_top5.items():
+    y_pred = model.predict(X_test)
+    y_proba = model.predict_proba(X_test)[:, 1]
+
+    print(f"\n {name} Performance:")
+    print("Accuracy:  ", round(accuracy_score(y_test, y_pred), 4))
+    print("AUC:       ", round(roc_auc_score(y_test, y_proba), 4))
+    print("Precision: ", round(precision_score(y_test, y_pred), 4))
+    print("Recall:    ", round(recall_score(y_test, y_pred), 4))
+    print("F1 Score:  ", round(f1_score(y_test, y_pred), 4))
+
+
+
+# In[10]:
+
+
+from sklearn.metrics import roc_curve
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10, 6))
+
+for name, model in models_top5.items():
+    y_proba = model.predict_proba(X_test)[:, 1]
+    fpr, tpr, _ = roc_curve(y_test, y_proba)
+    auc = roc_auc_score(y_test, y_proba)
+    plt.plot(fpr, tpr, label=f"{name} (AUC = {auc:.4f})")
+
+plt.plot([0, 1], [0, 1], 'k--', color='gray')
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curves - Top 5 Features")
+plt.legend(loc="lower right")
+plt.grid(True)
+plt.show()
+
+
+# In[11]:
+
+
+from sklearn.model_selection import GridSearchCV
+
+# Define parameter grids
+param_grids = {
+    "Random Forest": {
+        "n_estimators": [50, 100, 200],
+        "max_depth": [None, 5, 10]
+    },
+    "Logistic Regression": {
+        "C": [0.01, 0.1, 1, 10],
+        "penalty": ["l2"],
+        "solver": ["liblinear"]
+    },
+    "SVM": {
+        "C": [0.1, 1, 10],
+        "kernel": ["linear", "rbf"]
+    },
+    "KNN": {
+        "n_neighbors": [3, 5, 7, 9],
+        "weights": ["uniform", "distance"]
+    }
+}
+
+
+# In[12]:
+
+
+# Initialize models (without setting fixed params)
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+
+base_models = {
+    "Random Forest": RandomForestClassifier(random_state=42),
+    "Logistic Regression": LogisticRegression(),
+    "SVM": SVC(probability=True),
+    "KNN": KNeighborsClassifier()
+}
+
+best_models = {}
+
+# Run GridSearchCV for each model
+for name in base_models:
+    print(f"\n Optimizing {name}...")
+    grid = GridSearchCV(base_models[name], param_grids[name], cv=5, scoring='roc_auc', n_jobs=-1)
+    grid.fit(X_train, y_train)
+    best_models[name] = grid.best_estimator_
+    print(f"Best Parameters for {name}: {grid.best_params_}")
+
+
+# In[13]:
+
+
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+
+# Evaluate each tuned model
+for name, model in best_models.items():
+    y_pred = model.predict(X_test)
+    y_proba = model.predict_proba(X_test)[:, 1]
+
+    print(f"\n {name} - Tuned Performance on Test Set:")
+    print("Accuracy:  ", round(accuracy_score(y_test, y_pred), 4))
+    print("AUC:       ", round(roc_auc_score(y_test, y_proba), 4))
+    print("Precision: ", round(precision_score(y_test, y_pred), 4))
+    print("Recall:    ", round(recall_score(y_test, y_pred), 4))
+    print("F1 Score:  ", round(f1_score(y_test, y_pred), 4))
+
+
+# In[14]:
+
+
+# Plot ROC for tuned models
+from sklearn.metrics import roc_curve
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(10, 6))
+
+for name, model in best_models.items():
+    y_proba = model.predict_proba(X_test)[:, 1]
+    fpr, tpr, _ = roc_curve(y_test, y_proba)
+    auc = roc_auc_score(y_test, y_proba)
+    plt.plot(fpr, tpr, label=f"{name} (AUC = {auc:.4f})")
+
+plt.plot([0, 1], [0, 1], 'k--', color='gray')
+plt.title("ROC Curve - Tuned Models")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.legend(loc='lower right')
+plt.grid(True)
+plt.show()
+
+
+# In[15]:
+
+
+# Train a Random Forest on all features
+X_full = df.drop(columns=['stat'])
+y = df['stat']
+
+# Scale all features
+scaler = StandardScaler()
+X_full_scaled = scaler.fit_transform(X_full)
+
+# Train-test split (stratified)
+X_train_full, X_test_full, y_train_full, y_test_full = train_test_split(
+    X_full_scaled, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# Train Random Forest
+rf_feat = RandomForestClassifier(random_state=42)
+rf_feat.fit(X_train_full, y_train_full)
+
+# Get feature importances
+importances = rf_feat.feature_importances_
+feature_names = X_full.columns
+feat_imp_df = pd.DataFrame({
+    'Feature': feature_names,
+    'Importance': importances
+}).sort_values(by='Importance', ascending=False)
+
+# Display top 10
+print("Top 10 Most Indicative EEG Features:")
+display(feat_imp_df.head(10))
+
+# Plot top 15
+plt.figure(figsize=(10, 6))
+sns.barplot(x='Importance', y='Feature', data=feat_imp_df.head(15), palette='viridis')
+plt.title("Top 15 Most Indicative EEG Features (Random Forest)")
+plt.xlabel("Feature Importance Score")
+plt.ylabel("EEG Feature")
+plt.tight_layout()
+plt.show()
+
+
+# In[16]:
+
+
+# Reuse full scaled data and feature importances
+X_all = df.drop(columns=['stat'])
+y_all = df['stat']
+
+# Scale full feature set
+scaler = StandardScaler()
+X_scaled_all = scaler.fit_transform(X_all)
+
+# Split once and reuse
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled_all, y_all, test_size=0.2, random_state=42, stratify=y_all
+)
+
+# Train RF to get feature importance
+rf_base = RandomForestClassifier(random_state=42)
+rf_base.fit(X_train, y_train)
+importances = rf_base.feature_importances_
+features = X_all.columns
+
+# Sort features by importance
+sorted_indices = importances.argsort()[::-1]
+sorted_features = features[sorted_indices]
+
+# Test models using top-N features
+from sklearn.metrics import roc_auc_score
+
+print("AUC for Top-N Features:")
+best_n = None
+
+for n in range(1, 16):  # Try top 1 to 15
+    top_n_features = sorted_features[:n]
+
+    X_n = df[top_n_features]
+    X_n_scaled = scaler.fit_transform(X_n)
+
+    X_train_n, X_test_n, y_train_n, y_test_n = train_test_split(
+        X_n_scaled, y_all, test_size=0.2, random_state=42, stratify=y_all
+    )
+
+    model_n = RandomForestClassifier(random_state=42)
+    model_n.fit(X_train_n, y_train_n)
+    y_proba_n = model_n.predict_proba(X_test_n)[:, 1]
+    auc_n = roc_auc_score(y_test_n, y_proba_n)
+
+    print(f"Top {n} features → AUC: {auc_n:.4f}")
+
+    if auc_n >= 0.8 and best_n is None:
+        best_n = n
+
+if best_n:
+    print(f"\n Minimum features required to get AUC > 0.8: {best_n}")
+else:
+    print("\n No feature subset up to 15 reached AUC > 0.8")
+
+
+# In[19]:
+
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_selection import RFECV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.metrics import roc_auc_score
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Define features and target
+X = df.drop(columns=['stat'])  # All EEG features
+y = df['stat']                 # Target column
+
+# Scale features
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Initialize estimator and CV
+estimator = RandomForestClassifier(random_state=42)
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+# Run RFE with cross-validation
+rfe = RFECV(estimator=estimator, step=1, cv=cv, scoring='roc_auc', n_jobs=-1)
+rfe.fit(X_scaled, y)
+
+# Show selected features
+selected_features = X.columns[rfe.support_]
+print("Selected Features (AUC > 0.8):", list(selected_features))
+print("Number of Features Selected:", len(selected_features))
+
+# Evaluate model with selected features on test split
+X_selected = X_scaled[:, rfe.support_]
+X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, stratify=y, random_state=42)
+model = RandomForestClassifier(random_state=42)
+model.fit(X_train, y_train)
+y_proba = model.predict_proba(X_test)[:, 1]
+auc_score = roc_auc_score(y_test, y_proba)
+print("AUC Score on Test Set with Selected Features:", round(auc_score, 4))
+
+# Plot AUC vs. Number of Features (Updated for recent sklearn versions)
+plt.figure(figsize=(10, 6))
+
+# Use cv_results_ from RFECV (newer sklearn versions)
+scores = rfe.cv_results_['mean_test_score']
+plt.plot(range(1, len(scores) + 1), scores, marker='o', color='royalblue')
+
+plt.axhline(0.8, color='red', linestyle='--', label='AUC = 0.8 Threshold')
+plt.xlabel("Number of Features Selected", fontsize=12)
+plt.ylabel("Cross-Validated AUC", fontsize=12)
+plt.title("AUC vs Number of Features (RFE)", fontsize=14)
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+
+
+# In[20]:
+
+
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Use your selected features (can also use full X if needed)
+X_pca = df[selected_features]  # Replace with df[top5_features] or full df if preferred
+y_pca = df['stat']             # Target variable
+
+# Scale the selected features
+X_scaled_pca = scaler.fit_transform(X_pca)
+
+# Apply PCA
+pca = PCA(n_components=2)
+X_reduced = pca.fit_transform(X_scaled_pca)
+
+# Create a DataFrame for plotting
+pca_df = pd.DataFrame(data=X_reduced, columns=['PC1', 'PC2'])
+pca_df['stat'] = y_pca.values
+
+# Plot
+plt.figure(figsize=(10, 6))
+sns.scatterplot(data=pca_df, x='PC1', y='PC2', hue='stat', palette='Set2', s=100, edgecolor='k')
+plt.title("PCA Projection of EEG Data (Colored by Class)", fontsize=14)
+plt.xlabel("Principal Component 1")
+plt.ylabel("Principal Component 2")
+plt.legend(title='Class', labels=['Non-Epileptic (0)', 'Epileptic (1)'])
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+
+# In[ ]:
+
+
+
+
